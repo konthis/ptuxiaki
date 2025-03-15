@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 
-train_device = "cuda:2"
+train_device = "cuda:0"
 
 def prepare_ood_datasets(true_dataset, ood_dataset):
     # Preprocess OoD dataset same as true dataset
