@@ -24,7 +24,7 @@ def prepare_ood_datasets(true_dataset, ood_dataset):
     return dataloader, anomaly_targets
 
 
-def loop_over_dataloader(model, dataloader, standard_model):
+def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
     model.eval()
     global train_device
     with torch.no_grad():
@@ -40,9 +40,15 @@ def loop_over_dataloader(model, dataloader, standard_model):
                 probs = F.softmax(output, dim=1)
                 uncertainty = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
             else:
-                output,_ = model(data)
-                kernel_distance, pred = output.max(1)
-                uncertainty = - kernel_distance
+                if isSoftmax:
+                    output = model(data)
+                    kernel_distance, pred = output.max(1)
+                    uncertainty = -torch.sum(output * torch.log(output+ 1e-10), dim=1)
+
+                else:
+                    output,_ = model(data)
+                    kernel_distance, pred = output.max(1)
+                    uncertainty = - kernel_distance
             accuracy = pred.eq(target)
             accuracies.append(accuracy.cpu().numpy())
 
@@ -55,12 +61,12 @@ def loop_over_dataloader(model, dataloader, standard_model):
 
 
 
-def get_auroc_ood(true_dataset, ood_dataset, model, device, standard_model=False, final=False):
+def get_auroc_ood(true_dataset, ood_dataset, model, device, standard_model=False, final=False, isSoftmax = False):
     global train_device
     train_device = device
     dataloader, anomaly_targets = prepare_ood_datasets(true_dataset, ood_dataset)
 
-    scores, accuracies = loop_over_dataloader(model, dataloader, standard_model)
+    scores, accuracies = loop_over_dataloader(model, dataloader, standard_model, isSoftmax)
 
     accuracy = np.mean(accuracies[: len(true_dataset)])
     roc_auc = roc_auc_score(anomaly_targets, scores)

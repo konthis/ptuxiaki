@@ -2,30 +2,23 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
-## feature network
-class SimpleLinearNetwork(nn.Module):
-    def __init__(self,inFeaturesDim,outFeaturesDim):
+class SimpleLinearNetwork_Softmax(nn.Module):
+    def __init__(self, inputDim, secondLayerDim, thirdLayerDim, outputDim):
         super().__init__()
-        self.fc1 = nn.Linear(inFeaturesDim, outFeaturesDim)
-        # output layer
-        self.fc2 = nn.Linear(outFeaturesDim, inFeaturesDim)
+        self.fc1 = nn.Linear(inputDim, secondLayerDim)
+        self.fc2 = nn.Linear(secondLayerDim, thirdLayerDim)
+        self.fc3 = nn.Linear(thirdLayerDim, outputDim)
 
-        self.architecture = [inFeaturesDim, outFeaturesDim, outFeaturesDim, inFeaturesDim]
-
-    def forwardSoftmax(self, x):
+    def forward(self,x):
         x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return F.softmax(x,dim=1)
-    
-    def forwardFeatures(self,x):
-        x = F.relu(self.fc1(x))
-        return x
-    def getArchitecture(self):
-        return self.architecture
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        return F.softmax(x, dim=1)
 
-class SimpleLinearNetwork_DUQ(SimpleLinearNetwork):
+class SimpleLinearNetwork_DUQ(nn.Module):
     def __init__(self, inputDim,outFeatureDim,centroidDim,outputDim):
-        super().__init__(inputDim,outFeatureDim)
+        super().__init__()
+        self.fc1 = nn.Linear(inputDim, outFeatureDim)
         ## DUQ weight vector, Parameter so the optimizer and backprop get it into consideration
         ## size = centroidDim x noClasses x featureDim(prev output)
         self.W = nn.Parameter(
@@ -47,7 +40,12 @@ class SimpleLinearNetwork_DUQ(SimpleLinearNetwork):
 
         # for pirnting
         self.architecture = [inputDim, outFeatureDim, centroidDim, outputDim]
-    
+
+    def forwardFeatures(self,x):
+        x = F.relu(self.fc1(x))
+        return x
+
+
     def embeddingLayer(self, x):
         #  last weight layer, on DUQ part
         # simple matrix mul
@@ -98,3 +96,21 @@ def gradPenalty2sideCalc(x, ypred):
         )[0]
     gradPenalty = ((gradients.norm(2,dim=1)**2 - 1)**2).mean()
     return gradPenalty
+
+
+class customLinearNetwork(nn.Module):
+    # layersSize = list of sizes [insize,out1size,out2size,...,outsize]
+    def __init__(self, layersNum, layersSize):
+        super().__init__()
+        self.layersNum = layersNum
+        self.layers = nn.ModuleList() # create the list, so it uses the torch utilities
+        for l in range(layersNum-1):
+            self.layers.append(nn.Linear(layersSize[l],layersSize[l+1]))
+    
+    def forward(self,x):
+        for i in range(len(self.layers)-1):
+            x = F.relu(self.layers[i](x))
+        # last layer
+        x = self.layers[-1](x)
+        return F.softmax(x,dim=1)
+        
