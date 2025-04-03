@@ -106,7 +106,6 @@ class customLinearNetwork(nn.Module):
         self.layers = nn.ModuleList() # create the list, so it uses the torch utilities
         for l in range(layersNum-1):
             self.layers.append(nn.Linear(layersSize[l],layersSize[l+1]))
-    
     def forward(self,x):
         for i in range(len(self.layers)-1):
             x = F.relu(self.layers[i](x))
