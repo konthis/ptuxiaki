@@ -25,7 +25,11 @@ def prepare_ood_datasets(true_dataset, ood_dataset):
 
 
 def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
-    model.eval()
+    if isinstance(model,list):
+        for m in model:
+            m.eval()
+    else:
+        model.eval()
     global train_device
     with torch.no_grad():
         scores = []
@@ -43,7 +47,16 @@ def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
                 if isSoftmax:
                     output = model(data)
                     kernel_distance, pred = output.max(1)
-                    uncertainty = -torch.sum(output * torch.log(output+ 1e-10), dim=1)
+                    uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
+
+                elif isinstance(model,list):
+                    output = []
+                    for m in model:
+                        output.append(m.forward(data))
+                    output = torch.stack(output, dim=0)
+                    output = torch.mean(output,dim=0)
+                    _, pred = output.max(1)
+                    uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
 
                 else:
                     output,_ = model(data)

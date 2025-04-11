@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 
 def calculateVotingPrediction(array):
     # Function to find the most frequent element in a 1D array
@@ -14,3 +15,26 @@ def getDataloaderTargets(dataloader):
     for x,y in dataloader:
         targets.extend(y.tolist())
     return np.array(targets)
+
+def saveToEXCEL(list, colNames, filename):
+    df = pd.DataFrame(list)
+    df.columns = colNames
+    writer = pd.ExcelWriter(f'{filename}.xlsx', engine='xlsxwriter')
+    df.to_excel(writer, index=False)
+    writer._save()
+
+def topResultPerformersFromEXCEL(inFilename, outFilename,attributes):
+    # attributes = [(col position, threshold)]
+    df = pd.read_excel(f'{inFilename}.xlsx')
+    columns = df.columns.tolist()
+    rows = [row.tolist() for index, row in df.iterrows()]
+    results = []
+    for row in rows:
+        lowerThanThreshold = False
+        for attribute in attributes:
+            if row[attribute[0]] <= attribute[1]:
+                lowerThanThreshold = True
+                break
+        if not lowerThanThreshold:
+            results.append(row)
+    saveToEXCEL(results, columns, outFilename)

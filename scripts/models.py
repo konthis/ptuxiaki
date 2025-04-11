@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
+import numpy as np
 
 class SimpleLinearNetwork_Softmax(nn.Module):
     def __init__(self, inputDim, secondLayerDim, thirdLayerDim, outputDim):
@@ -16,7 +17,7 @@ class SimpleLinearNetwork_Softmax(nn.Module):
         return F.softmax(x, dim=1)
 
 class SimpleLinearNetwork_DUQ(nn.Module):
-    def __init__(self, inputDim,outFeatureDim,centroidDim,outputDim):
+    def __init__(self, inputDim,outFeatureDim,centroidDim,outputDim,std):
         super().__init__()
         self.fc1 = nn.Linear(inputDim, outFeatureDim)
         ## DUQ weight vector, Parameter so the optimizer and backprop get it into consideration
@@ -32,10 +33,12 @@ class SimpleLinearNetwork_DUQ(nn.Module):
         # momentum
         self.gamma = 0.999
 
+
+        self.std = std #  standard div of m
         #centroids are calculated as e_ct = m_ct/n_ct, c=class t = minibatch
         # register buffers = parameters that dont return with parameters() call, so it wont calc the derivs for backprop
         self.register_buffer("n",torch.ones(outputDim))
-        self.register_buffer('m', torch.normal(torch.zeros(centroidDim, outputDim), std = 1))
+        self.register_buffer('m', torch.normal(torch.zeros(centroidDim, outputDim), std = std))
 
 
         # for pirnting
@@ -113,3 +116,18 @@ class customLinearNetwork(nn.Module):
         x = self.layers[-1](x)
         return F.softmax(x,dim=1)
         
+def softmaxForward(model, dataloader):
+    model.eval()
+    pred = []
+    with torch.no_grad():
+        for X,y in dataloader:
+            X = X.to(device)
+            pred.append(model.forward(X).cpu().numpy())
+    return np.vstack(pred)
+
+def deepEnsembleForward(models, dataloader):
+    predictions = []
+    for model in models:
+        predictions.append(softmaxForward(model,dataloader))
+    return np.mean(predictions,axis=0) # merging results
+
