@@ -5,6 +5,7 @@ import numpy as np
 
 class SimpleLinearNetwork_Softmax(nn.Module):
     def __init__(self, inputDim, secondLayerDim, thirdLayerDim, outputDim):
+        self.kwargs = {'inputDim': inputDim, 'secondLayerDim': secondLayerDim, 'thirdLayerDim': thirdLayerDim, 'outputDim':outputDim}
         super().__init__()
         self.fc1 = nn.Linear(inputDim, secondLayerDim)
         self.fc2 = nn.Linear(secondLayerDim, thirdLayerDim)
@@ -17,8 +18,10 @@ class SimpleLinearNetwork_Softmax(nn.Module):
         return F.softmax(x, dim=1)
 
 class SimpleLinearNetwork_DUQ(nn.Module):
-    def __init__(self, inputDim,outFeatureDim,centroidDim,outputDim,std):
+    def __init__(self, inputDim,outFeatureDim,centroidDim,outputDim,std,initSigma):
         super().__init__()
+        ###### for saving
+        self.kwargs = {'inputDim': inputDim, 'outFeatureDim': outFeatureDim, 'centroidDim': centroidDim, 'outputDim':outputDim, 'std':std, 'initSigma':initSigma}
         self.fc1 = nn.Linear(inputDim, outFeatureDim)
         ## DUQ weight vector, Parameter so the optimizer and backprop get it into consideration
         ## size = centroidDim x noClasses x featureDim(prev output)
@@ -29,7 +32,9 @@ class SimpleLinearNetwork_DUQ(nn.Module):
         # length scale
         #self.sigma = 1
         # trainable sigma
-        self.sigma = nn.Parameter(torch.ones_like(torch.zeros(outputDim)))
+
+        # maybe lower lr ###############################
+        self.sigma = nn.Parameter(torch.ones_like(torch.zeros(outputDim))*initSigma) ##### change
         # momentum
         self.gamma = 0.999
 
@@ -85,7 +90,7 @@ class SimpleLinearNetwork_DUQ(nn.Module):
         return self.m / self.n
 
     def printSigma(self):
-        print(self.sigma)
+        print(self.sigma.detach().to('cpu').numpy())
     
     def getArchitecture(self):
         return self.architecture
@@ -105,6 +110,7 @@ class customLinearNetwork(nn.Module):
     # layersSize = list of sizes [insize,out1size,out2size,...,outsize]
     def __init__(self, layersNum, layersSize):
         super().__init__()
+        self.kwargs = {'layersNum': layersNum, 'layersSize': layersSize}
         self.layersNum = layersNum
         self.layers = nn.ModuleList() # create the list, so it uses the torch utilities
         for l in range(layersNum-1):

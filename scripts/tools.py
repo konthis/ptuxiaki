@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from matplotlib import pyplot as plt
 
 def calculateVotingPrediction(array):
     # Function to find the most frequent element in a 1D array
@@ -17,7 +18,8 @@ def getDataloaderTargets(dataloader):
     return np.array(targets)
 
 def saveToEXCEL(list, colNames, filename):
-    df = pd.DataFrame(list)
+    #df = pd.DataFrame(list)
+    df = pd.DataFrame.from_dict(list)
     df.columns = colNames
     writer = pd.ExcelWriter(f'{filename}.xlsx', engine='xlsxwriter')
     df.to_excel(writer, index=False)
@@ -38,3 +40,23 @@ def topResultPerformersFromEXCEL(inFilename, outFilename,attributes):
         if not lowerThanThreshold:
             results.append(row)
     saveToEXCEL(results, columns, outFilename)
+
+
+def plot(xaxis,xlabel,yaxis,ylabel,color,funcNames,xlogscale=False,ylogscale=False):
+    if not isinstance(xaxis[0],list):
+        xaxis = [xaxis]
+        yaxis = [yaxis]
+        color = [color]
+        funcNames = [funcNames]
+    for i in range(len(xaxis)):
+        plt.plot(xaxis[i],yaxis[i],c=color[i],label=funcNames[i])
+
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if xlogscale:
+        plt.xscale('log')
+    if ylogscale:
+        plt.yscale('log')
+    plt.legend()
+    plt.show()
+
