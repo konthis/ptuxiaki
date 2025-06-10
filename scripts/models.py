@@ -95,15 +95,16 @@ class SimpleLinearNetwork_DUQ(nn.Module):
     def getArchitecture(self):
         return self.architecture
 
-def gradPenalty2sideCalc(x, ypred):
-    gradients = torch.autograd.grad(
-            outputs=ypred,
-            inputs=x,
-            grad_outputs=torch.ones_like(ypred),
-            create_graph=True,
-        )[0]
-    gradPenalty = ((gradients.norm(2,dim=1)**2 - 1)**2).mean()
-    return gradPenalty
+#def gradPenalty2sideCalc(x, ypred):
+#    gradients = torch.autograd.grad(
+#            outputs=ypred,
+#            inputs=x,
+#            grad_outputs=torch.ones_like(ypred),
+#            create_graph=True
+#        )[0]
+#    print(gradients)
+#    gradPenalty = ((gradients.norm(2,dim=1)**2 - 1)**2).mean()
+#    return gradPenalty
 
 
 class customLinearNetwork(nn.Module):

@@ -41,16 +41,18 @@ def topResultPerformersFromEXCEL(inFilename, outFilename,attributes):
             results.append(row)
     saveToEXCEL(results, columns, outFilename)
 
+def plot(xaxis,xlabel,yaxis,ylabel,color,funcNames,xlim=None,ylim=None,xlogscale=False,ylogscale=False):
+    
+    if isinstance(yaxis[0],list): # if multiple funcs
+        for i in range(len(yaxis)):
+            plt.plot(xaxis,yaxis[i],c=color[i],label=funcNames[i])
+    else:
+        plt.plot(xaxis,yaxis,c=color,label=funcNames)
 
-def plot(xaxis,xlabel,yaxis,ylabel,color,funcNames,xlogscale=False,ylogscale=False):
-    if not isinstance(xaxis[0],list):
-        xaxis = [xaxis]
-        yaxis = [yaxis]
-        color = [color]
-        funcNames = [funcNames]
-    for i in range(len(xaxis)):
-        plt.plot(xaxis[i],yaxis[i],c=color[i],label=funcNames[i])
-
+    if xlim:
+        plt.xlim(xlim)
+    if ylim:
+        plt.ylim(ylim)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     if xlogscale:

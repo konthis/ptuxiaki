@@ -5,7 +5,8 @@ import torch.nn.functional as F
 from matplotlib import pyplot as plt
 
 
-train_device = "cuda:0"
+#train_device = "cuda:0"
+train_device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def prepare_ood_datasets(true_dataset, ood_dataset):
     # Preprocess OoD dataset same as true dataset
@@ -24,7 +25,7 @@ def prepare_ood_datasets(true_dataset, ood_dataset):
     return dataloader, anomaly_targets
 
 
-def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
+def loop_over_dataloader(model, dataloader, model_type):#standard_model, isSoftmax):
     if isinstance(model,list):
         for m in model:
             m.eval()
@@ -35,33 +36,35 @@ def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
         scores = []
         accuracies = []
         for data, target in dataloader:
-            data = data.cuda()
-            target = target.cuda()
+            #data = data.cuda()
+            #target = target.cuda()
+            data = data.to(train_device)
+            target = target.to(train_device)
 
-            if standard_model:
-                output, _ = model(data)
+            if model_type.lower() == 'duq':
+                output,_ = model(data)
+                kernel_distance, pred = output.max(1)
+                uncertainty = - kernel_distance ############ ask
+            
+            elif model_type.lower() == 'softmax':
+                output = model(data)
                 _, pred = output.max(1)
-                probs = F.softmax(output, dim=1)
-                uncertainty = -torch.sum(probs * torch.log(probs + 1e-10), dim=1)
-            else:
-                if isSoftmax:
-                    output = model(data)
-                    probs, pred = output.max(1)
-                    uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
+                uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
 
-                elif isinstance(model,list):
-                    output = []
-                    for m in model:
-                        output.append(m.forward(data))
-                    output = torch.stack(output, dim=0)
-                    output = torch.mean(output, dim=0)
-                    _, pred = output.max(1)
-                    uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
+            elif model_type.lower() == 'kan':
+                output = model.forwardSoftmax(data) 
+                _, pred = output.max(1)
+                uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
+            
+            else: ## embedings
+                output = []
+                for m in model:
+                    output.append(m.forward(data))
+                output = torch.stack(output, dim=0)
+                output = torch.mean(output, dim=0)
+                _, pred = output.max(1)
+                uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
 
-                else:
-                    output,_ = model(data)
-                    kernel_distance, pred = output.max(1)
-                    uncertainty = - kernel_distance
             accuracy = pred.eq(target)
             accuracies.append(accuracy.cpu().numpy())
 
@@ -74,14 +77,14 @@ def loop_over_dataloader(model, dataloader, standard_model, isSoftmax):
 
 
 
-def get_auroc_ood(true_dataset, ood_dataset, model, device, standard_model=False, final=False, isSoftmax = False):
+def get_auroc_ood(true_dataset, ood_dataset, model, device, model_type):#standard_model=False, isSoftmax = False):
     global train_device
     train_device = device
     dataloader, anomaly_targets = prepare_ood_datasets(true_dataset, ood_dataset)
 
-    scores, accuracies = loop_over_dataloader(model, dataloader, standard_model, isSoftmax)
+    scores, accuracies = loop_over_dataloader(model, dataloader, model_type)# standard_model, isSoftmax)
 
-    accuracy = np.mean(accuracies[: len(true_dataset)])
+    #accuracy = np.mean(accuracies[: len(true_dataset)])
     roc_auc = roc_auc_score(anomaly_targets, scores)
 
     return roc_auc

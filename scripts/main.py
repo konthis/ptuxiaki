@@ -1,5 +1,7 @@
 from datasets import *
 from models import *
+from functions import *
+from BSRBF_KAN import *
 from tools import *
 from oodEvaluation import *
 from sklearn.datasets import load_iris,load_diabetes
@@ -47,11 +49,10 @@ def softmaxTrain(trainloader, testloader,falseloader, model, optimizer, epochs):
         trainAcc, trainAvgLoss = softmaxTrainStep(trainloader,model,nn.CrossEntropyLoss(),optimizer)
         testAcc, testAvgLoss= softmaxTest(testloader,model)
 
-        auroc.append(get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, standard_model=False, isSoftmax = True))
+        auroc.append(get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type='softmax'))
         #scheduler.step(testAvgLoss) ########
         #lrs.append(scheduler.get_last_lr())
     return trainAcc, trainAvgLoss, testAcc, testAvgLoss, auroc,lrs
-
 
 def softmaxForward(model, dataloader):
     model.eval()
@@ -125,7 +126,7 @@ def duqTrain(trainloader, testloader, falseloader, model, optimizer, l, epochs):
         testAcc, testAvgLoss = duqTest(testloader, model)
         trainLosses.append(trainAvgLoss) 
         testLosses.append(testAvgLoss) 
-        auroc.append(get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, standard_model=False, isSoftmax = False))
+        auroc.append(get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type='duq'))
 
         scheduler.step(testAvgLoss)
         lrs.append(scheduler.get_last_lr())
@@ -134,8 +135,24 @@ def duqTrain(trainloader, testloader, falseloader, model, optimizer, l, epochs):
     #plot([i for i in range(epochs)],'epochs',ylosses,'loss','r')
     return trainAcc, trainAvgLoss, trainLosses, testAcc, testAvgLoss, testLosses,auroc, lrs
 
+def duqTest(dataloader, model):
+    model.eval()
+    testLoss, correct = 0, 0
+    totalCert = 0
+    with torch.no_grad():
+        for x, y in dataloader:
+            y = F.one_hot(y,num_classes=3).type(torch.float)
+            x = x.to(device)
+            y = y.to(device)
+            ypred,z = model.forward(x)
+            totalCert += torch.max(ypred,dim=1)[0].mean()
+            testLoss += F.cross_entropy(ypred, y).item()
+            correct += (torch.argmax(ypred,dim=1) == torch.argmax(y,dim=1)).sum().item()
+    accuracy = correct / len(dataloader.dataset)
+    avgLoss = testLoss/len(dataloader)
+    return accuracy, avgLoss 
 
-def testDUQArchitectures(trainloader, testloader, falseloader, lrs, architectures, lam, epochs, modelsPerTest, std):
+def testDUQArchitectures(trainloader, testloader, falseloader, lrs, architectures, lam, epochs, modelsPerTest, std,falseloader2=None):
     results = []
     
     print("DUQ MODEL TEST")
@@ -155,6 +172,7 @@ def testDUQArchitectures(trainloader, testloader, falseloader, lrs, architecture
                     testAvgLosses = []
                     testLosses = []
                     aurocResults = []
+                    auroc2Results = []
                     aurocProgressResults = []
                     lrsLog = []
                     for _ in range(modelsPerTest):
@@ -172,6 +190,9 @@ def testDUQArchitectures(trainloader, testloader, falseloader, lrs, architecture
 
                         #testAcc, testAvgLoss = duqTest(testloader, model)
                         auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, standard_model=False, isSoftmax = False)
+                        if falseloader2:
+                            auroc2 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader2.dataset, model=model, device=device, standard_model=False, isSoftmax = False)
+                            auroc2Results.append(auroc2)
 
                         trainAccs.append(trainAcc)
                         trainAvgLosses.append(trainAvgLoss)
@@ -199,13 +220,18 @@ def testDUQArchitectures(trainloader, testloader, falseloader, lrs, architecture
                                                         np.mean(testAccs,axis=0), np.std(testAccs,axis=0),
                                                         np.mean(testAvgLosses,axis=0), np.std(testAvgLosses,axis=0),
                                                         np.mean(aurocResults, axis=0), np.std(aurocResults,axis=0)])
+
                     print(f"Train Acc {100*results[-1][5]:>.1f}% std {100*results[-1][6]:>.1f}, AvgLoss {results[-1][7]:>.3f} std {results[-1][8]:>.3f}")
                     print(f"Test  Acc {100*results[-1][9]:>.1f}% std {100*results[-1][10]:>.1f}, AvgLoss {results[-1][11]:>.3f} std {results[-1][12]:>.3f}")
                     print(f"AUROC {results[-1][13]:>.3f} std {results[-1][14]:>.3f}")
+                    if falseloader2:
+                        results[-1].append(np.mean(auroc2Results, axis=0))
+                        results[-1].append(np.std(auroc2Results, axis=0))
+                        print(f"AUROC2 {results[-1][15]:>.3f} std {results[-1][16]:>.3f}")
                     print("-")
                     #### Save model
-                    for i, m in enumerate(models):
-                        torch.save([m.kwargs,m.state_dict()], f"../models/duq/duqBestModel{i}.pth")
+                    #for i, m in enumerate(models):
+                    #    torch.save([m.kwargs,m.state_dict()], f"../models/duq/duqModel{i}.pth")
                             
         print("\n")
     return results
@@ -237,7 +263,7 @@ def testSoftmaxArchitectures(trainloader, testloader,falseloader, lrs, architect
                 testAccs.append(testAcc)
                 testAvgLosses.append(testAvgLoss)
                 aurocProgressResults.append(aurocLog)
-                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, standard_model=False, isSoftmax = True)
+                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type='softmax')
                 aurocResults.append(auroc)
 
             trainAccs = np.array(trainAccs)
@@ -297,7 +323,7 @@ def testDeepEnsemblesArchitectures(trainloader, testloader,falseloader,lrs, arch
                 # get average logits for the 5 models of ensebmle
                 probsTrain = np.mean(probsTrain,axis=0)
                 probsTest = np.mean(probsTest,axis=0)
-                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=models, device=device, standard_model=False, isSoftmax = False)
+                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=models, device=device, model_type='embedings')
                 aurocResults.append(auroc)
 
                 trainAccs.append(np.mean(np.argmax(probsTrain,axis=1) == ytrainloader))
@@ -319,7 +345,7 @@ def testDeepEnsemblesArchitectures(trainloader, testloader,falseloader,lrs, arch
         print("\n")
     return results
 
-def testDUQHyperparams(trainloader, testloader, falseloader, lr=1e-3, lrSigma=1e-3, initSigma = 1 ,architecture=[3,32,16,3], lam=0.25, epochs=100, modelsPerTest=5, std=1e-2):
+def testDUQHyperparams(trainloader, testloader, falseloader, lr=1e-1, lrSigma=1e-3, initSigma = 1 ,architecture=[3,32,16,3], lam=0.2, epochs=120, modelsPerTest=5, std=1e-2, falseloader2=False):
     if not isinstance(lrSigma,list):
         lrSigma = [lrSigma]
     if not isinstance(initSigma,list):
@@ -337,20 +363,23 @@ def testDUQHyperparams(trainloader, testloader, falseloader, lr=1e-3, lrSigma=1e
             testAccs = []
             testAvgLosses = []
             aurocResults = []
+            auroc2Results = []
+            models = []
             for _ in range(modelsPerTest):
                 model = SimpleLinearNetwork_DUQ(architecture[0],architecture[1],architecture[2],architecture[3],std,inits).to(device)
+                models.append(model)
                 sigmaParam = [p for name, p in model.named_parameters() if 'sigma' in name]
                 othersParam = [p for name, p in model.named_parameters() if 'sigma' not in name]
                 optimizer = torch.optim.SGD([{"params":othersParam},{"params":sigmaParam,"lr":lrsig}],lr = lr)
 
 
-                #optimizer = torch.optim.SGD(model.parameters(),lr = lr)
-                #trainAcc, trainAvgLoss = duqTrain(trainloader,testloader,falseloader,model,optimizer,lam, epochs)
                 trainAcc, trainAvgLoss, trainLoss, testAcc, testAvgLoss, testLoss, aurocProgress, lrLog = duqTrain(trainloader,testloader, falseloader,model,optimizer,lam, epochs)
-                #testAcc, testAvgLoss = duqTest(testloader, model)
 
 
-                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, standard_model=False, isSoftmax = False)
+                auroc = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type='duq')
+                if falseloader2:
+                    auroc2 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader2.dataset, model=model, device=device, model_type='duq')
+                    auroc2Results.append(auroc2)
 
                 trainAccs.append(trainAcc)
                 trainAvgLosses.append(trainAvgLoss)
@@ -371,17 +400,23 @@ def testDUQHyperparams(trainloader, testloader, falseloader, lr=1e-3, lrSigma=1e
             print(f"Train Acc {100*results[-1][3]:>.1f}% std {100*results[-1][4]:>.1f}, AvgLoss {results[-1][5]:>.3f} std {results[-1][6]:>.3f}")
             print(f"Test  Acc {100*results[-1][7]:>.1f}% std {100*results[-1][8]:>.1f}, AvgLoss {results[-1][9]:>.3f} std {results[-1][10]:>.3f}")
             print(f"AUROC {results[-1][11]:>.3f} std {results[-1][12]:>.3f}")
-            print("-")
 
-        print("\n")
+            if falseloader2:
+                results[-1].append(np.mean(auroc2Results, axis=0))
+                results[-1].append(np.std(auroc2Results, axis=0))
+                print(f"AUROC2 {results[-1][13]:>.3f} std {results[-1][14]:>.3f}")
+            print("-")
+        #### Save model
+        #for i, m in enumerate(models):
+        #    torch.save([m.kwargs,m.state_dict()], f"../models/duq/duqsigmaModel{i}.pth")
+        #print("\n")
     return results
 
-
 def main():
-    # set dev to gpu
 
     ambTestSet, ambTrainLoader, ambTestLoader, ambFeaturesDim = load_D1(5)
     falseloader = createSklearnDataloader(load_diabetes(),[1,2,3])
+    falseloader2 = createSklearnDataloader(load_iris(),[1,2,3])
     print(f"Train size: {len(ambTrainLoader.dataset)}")
     print(f"Test size: {len(ambTestLoader.dataset)}")
     print("----------------")
@@ -389,6 +424,7 @@ def main():
     print("1. Train DUQ")
     print("2. Train single Softmax")
     print("3. Train 5-ensemble")
+    print("4. Train KAN")
     print("0. Exit")
     ans = str(input())
     # for answers like 123
@@ -399,33 +435,32 @@ def main():
                 #epochs = 200
                 #epochs = 500
                 print(f"epochs {epochs}")
-                modelsPerTest = 5 # no of models per set of hyperparams, for stat signif.
+                modelsPerTest = 10 # no of models per set of hyperparams, for stat signif.
                 lrs = [1e-1]
                 #lrs = [1e-4,1e-3,1e-2]
-                #lrSigma = [1e-1,1e-2,1e-3,1e-4,1e-5]
-                #lrSigma = [1e-2]
-                #initSigma = [0.1]
-                lrSigma = [1e-2,1e-3,1e-4,1e-5]
+                lrSigma = [1e-1,1e-2,1e-3,1e-4,1e-5]
+                lrSigma = [1e-3]
                 initSigma = [0.1,0.3,0.5,1,2]
+                initSigma = [0.5]
                 architectures = [[3,32,16,3]]
                 #architectures = [[3,32,16,3], [3,16,32,3]]
                 #lam = [0, 0.0001, 0.001, 0.01, 0.1, 0.15, 0.2, .25, .3, .5, 1]
-                lam = [0.25]
+                lam = [0.2]
                 std = [1e-2]
                 #std = [1e-4, 1e-3, 1e-2, 1e-1]
-                duqResults = testDUQArchitectures(ambTrainLoader, ambTestLoader, falseloader,lrs,architectures,lam,epochs,modelsPerTest, std)
-                columnsA = ["arch", "epochs","lr","lambda", "init std", "train mean acc", "train std acc", "train mean avgloss", "train std avgloss",
-                            "test mean acc", "test std acc","test mean avgloss","test std avgloss", "auroc mean", 'auroc std']
-                #duqResults = testDUQHyperparams(ambTrainLoader, ambTestLoader, falseloader,lrs[0],lrSigma,initSigma,
-                #                                architectures[0],lam[0],epochs,modelsPerTest, std[0])
+                #duqResults = testDUQArchitectures(ambTrainLoader, ambTestLoader, falseloader,lrs,architectures,lam,epochs,modelsPerTest, std,falseloader2)
+                #columnsA = ["arch", "epochs","lr","lambda", "init std", "train mean acc", "train std acc", "train mean avgloss", "train std avgloss",
+                #            "test mean acc", "test std acc","test mean avgloss","test std avgloss", "auroc mean", 'auroc std', "auroc2 mean", 'auroc2 std']
+                duqResults = testDUQHyperparams(ambTrainLoader, ambTestLoader, falseloader,lrs[0],lrSigma,initSigma,
+                                                architectures[0],lam[0],epochs,modelsPerTest, std[0],falseloader2)
                 columnsH = ["arch", "lrsigma","initsigma", "train mean acc", "train std acc", "train mean avgloss", "train std avgloss",
-                            "test mean acc", "test std acc","test mean avgloss","test std avgloss", "auroc mean", 'auroc std']
-                #saveToEXCEL(duqResults,columnsH,f"results/duqResults_s_lrs2_e{epochs}")
-                saveToEXCEL(duqResults,columnsA,f"results/duqResults_best_e{epochs}")
+                           "test mean acc", "test std acc","test mean avgloss","test std avgloss", "auroc mean", 'auroc std', "auroc2 mean","auroc2 std"]
+                saveToEXCEL(duqResults,columnsH,f"results/duqResults_sigma_e{epochs}")
+                #saveToEXCEL(duqResults,columnsA,f"results/duqResults_lambda_e{epochs}")
             case '2':
                 epochs = 120
                 #epochs = 200
-                modelsPerTest = 5 # no of models per set of hyperparams, for stat signif.
+                modelsPerTest = 10 # no of models per set of hyperparams, for stat signif.
                 lrs = [1e-1]
                 architectures = [[3,16,32,3]]
                 #architectures = [[3,32,16,3], [3, 16,32,3]]
@@ -435,16 +470,18 @@ def main():
                 saveToEXCEL(softresults,columns,f"results/softmaxResults_a{len(architectures)}e{epochs}diab")
             case '3':
                 epochs = 120
-                modelsPerTest = 5 # no of models per set of hyperparams, for stat signif.
+                modelsPerTest = 10 # no of models per set of hyperparams, for stat signif.
                 lrs = [1e-1]
                 #architectures = [[3,32,16,3],[3,16,32,3]]
                 architectures = [[3,32,16,3]]
-                ensembleresults = testDeepEnsemblesArchitectures(ambTrainLoader, ambTestLoader,falseloader,lrs,architectures,epochs,modelsPerTest)
+                ensembleresults = testDeepEnsemblesArchitectures(ambTrainLoader, ambTestLoader,falseloader,lrs,architectures,epochs,modelsPerTest) 
                 columns = ["arch", "epochs","lr", "train mean acc", "train std acc",
                             "test mean acc", "test std acc", "auroc mean", 'auroc std']
                 saveToEXCEL(ensembleresults,columns,f"results/deepEnsembleResults_a{len(architectures)}e{epochs}diab")
+            
             case '0':
                 exit()
     
-main()
+if __name__ == "__main__":
+    main()
 
