@@ -23,6 +23,7 @@ def gradPenalty2sideCalc(x, ypred):
             create_graph=True
         )[0]
     #gradPenalty = ((gradients.norm(2,dim=1)**2 - 1)**2).mean()
+    
     gradPenalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
     return gradPenalty
 

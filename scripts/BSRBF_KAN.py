@@ -8,18 +8,16 @@ import torch.nn.functional as F
 class RadialBasisFunction(nn.Module):
     def __init__(
         self,
-        grid_min: float = -1.5,
-        grid_max: float = 1.5,
+        grid_min: float = -6,
+        grid_max: float = 6,
         num_grids: int = 8,
-        initDenominator: float = 1.,
-        denominator: float = None,  # larger denominators lead to smoother basis
+        denominator: float = 1.,  # larger denominators lead to smoother basis
     ):
         super().__init__()
         grid = torch.linspace(grid_min, grid_max, num_grids)
         self.grid = torch.nn.Parameter(grid, requires_grad=False)
         #self.denominator = denominator or (grid_max - grid_min) / (num_grids - 1)
-        #initDenominator = (grid_max - grid_min) / (num_grids - 1)
-        self.denominator = nn.Parameter(torch.ones_like(torch.zeros(1))*initDenominator) ##### change
+        self.denominator = nn.Parameter(torch.ones_like(torch.zeros(1))*denominator) ##### change
 
     def forward(self, x):
         return torch.exp(-((x[..., None] - self.grid) / self.denominator) ** 2)
@@ -32,9 +30,10 @@ class BSRBF_KANLayer(nn.Module):
         output_dim: int,
         grid_size = 5,
         spline_order = 3,
-        initDenominator = 1.,
+        denominator = 1.,
         base_activation = F.silu,
-        grid_range=[-1.5, 1.5],
+        #grid_range=[-1.5, 1.5],
+        grid_range=[-6, 6],
 
     ) -> None:
         super().__init__()
@@ -51,7 +50,7 @@ class BSRBF_KANLayer(nn.Module):
         self.spline_weight = torch.nn.Parameter(torch.Tensor(self.output_dim, self.input_dim*(grid_size+spline_order)))
         torch.nn.init.kaiming_uniform_(self.spline_weight, a=math.sqrt(5))
         
-        self.rbf = RadialBasisFunction(grid_range[0], grid_range[1], grid_size+spline_order,initDenominator)
+        self.rbf = RadialBasisFunction(grid_range[0], grid_range[1], grid_size+spline_order,denominator)
         
         h = (grid_range[1] - grid_range[0]) / grid_size # 0.45, 0.5
         grid = (
@@ -136,7 +135,7 @@ class BSRBF_KAN(torch.nn.Module):
         layers_hidden,
         grid_size=5,
         spline_order=3,  
-        initDenominator=1,
+        denominator=1.,
         base_activation=F.silu,
     ):
         super(BSRBF_KAN, self).__init__()
@@ -152,7 +151,7 @@ class BSRBF_KAN(torch.nn.Module):
                     output_dim,
                     grid_size=grid_size,
                     spline_order=spline_order,
-                    initDenominator=initDenominator,
+                    denominator=denominator,
                     base_activation=base_activation,
                 )
             )

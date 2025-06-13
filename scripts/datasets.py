@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 
+from sklearn.datasets import load_iris,load_breast_cancer,load_wine
 
 
 # 0: Non-infectious SIRS
@@ -69,3 +70,12 @@ def createSklearnDataloader(dataset, featureIdxs):
     datasetY = torch.autograd.Variable(torch.tensor(dataset['target'], dtype=torch.long))
     dataloader = DataLoader(TensorDataset(datasetX,datasetY), batch_size=1000, shuffle=True)
     return dataloader
+
+
+def loadAllDataloaders(binary):
+    _, ambTrainLoader, ambTestLoader, _= load_D1(1337,binary=binary)
+    falseloader  = createSklearnDataloader(load_wine(),[0,1,2])
+    falseloader2 = createSklearnDataloader(load_iris(),[0,1,2]) ######## for some reason 
+    falseloader3 = createSklearnDataloader(load_breast_cancer(),[0,1,2])
+
+    return ambTrainLoader,ambTestLoader,falseloader,falseloader2,falseloader3

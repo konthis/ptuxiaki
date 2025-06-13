@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 
-def calculateVotingPrediction(array):
-    # Function to find the most frequent element in a 1D array
-    def most_frequent_element(column):
-        unique_elements, counts = np.unique(column, return_counts=True)
-        return unique_elements[np.argmax(counts)]
-    
-    # Apply the function to each column and return the result
-    return np.apply_along_axis(most_frequent_element, axis=0, arr=array)
+#def calculateVotingPrediction(array):
+#    # Function to find the most frequent element in a 1D array
+#    def most_frequent_element(column):
+#        unique_elements, counts = np.unique(column, return_counts=True)
+#        return unique_elements[np.argmax(counts)]
+#    
+#    # Apply the function to each column and return the result
+#    return np.apply_along_axis(most_frequent_element, axis=0, arr=array)
 
 def getDataloaderTargets(dataloader):
     targets = []

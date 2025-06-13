@@ -31,19 +31,17 @@ class SplineLinear(nn.Linear):
 class RadialBasisFunction(nn.Module):
     def __init__(
         self,
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8,
-        initDenominator: float = 1.,
-        denominator: float = None,  # larger denominators lead to smoother basis
+        denominator: float = 1.,  # larger denominators lead to smoother basis
     ):
         super().__init__()
         grid = torch.linspace(grid_min, grid_max, num_grids)
         self.grid = torch.nn.Parameter(grid, requires_grad=False)
         #self.denominator = denominator or (grid_max - grid_min) / (num_grids - 1)
         # learnable denom
-        #initDenominator = (grid_max - grid_min) / (num_grids - 1)
-        self.denominator = nn.Parameter(torch.ones_like(torch.zeros(1))*initDenominator) ##### change
+        self.denominator = nn.Parameter(torch.ones_like(torch.zeros(1))*denominator) ##### change
 
     def forward(self, x):
         return torch.exp(-((x[..., None] - self.grid) / self.denominator) ** 2)
@@ -53,17 +51,17 @@ class FastKANLayer(nn.Module):
         self,
         input_dim: int,
         output_dim: int,
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8,
-        initDenominator: float = 1.,
+        denominator: float = 1.,
         use_base_update: bool = True,
         base_activation = F.silu,
-        spline_weight_init_scale: float = 0.1,
+        spline_weight_init_scale: float = 0.5,
     ) -> None:
         super().__init__()
         self.layernorm = nn.LayerNorm(input_dim)
-        self.rbf = RadialBasisFunction(grid_min, grid_max, num_grids,initDenominator)
+        self.rbf = RadialBasisFunction(grid_min, grid_max, num_grids,denominator)
         self.spline_linear = SplineLinear(input_dim * num_grids, output_dim, spline_weight_init_scale)
         self.use_base_update = use_base_update
         if use_base_update:
@@ -93,10 +91,10 @@ class FastKAN(nn.Module):
     def __init__(
         self,
         layers_hidden: List[int],
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8, # original: 8
-        initDenominator: float = 1.,
+        denominator: float = 1.,
         use_base_update: bool = True,
         base_activation = ActivationFunctions(gamma=1).RBF_SiLU,
         spline_weight_init_scale: float = 0.1,
@@ -108,7 +106,7 @@ class FastKAN(nn.Module):
                 grid_min=grid_min,
                 grid_max=grid_max,
                 num_grids=num_grids,
-                initDenominator=initDenominator,
+                denominator=denominator,
                 use_base_update=use_base_update,
                 base_activation=base_activation,
                 spline_weight_init_scale=spline_weight_init_scale,

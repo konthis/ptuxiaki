@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 import torch.nn.functional as F
-import numpy as np
 
 class SimpleLinearNetwork_Softmax(nn.Module):
     def __init__(self, inputDim, secondLayerDim, thirdLayerDim, outputDim):
@@ -95,18 +94,6 @@ class SimpleLinearNetwork_DUQ(nn.Module):
     def getArchitecture(self):
         return self.architecture
 
-#def gradPenalty2sideCalc(x, ypred):
-#    gradients = torch.autograd.grad(
-#            outputs=ypred,
-#            inputs=x,
-#            grad_outputs=torch.ones_like(ypred),
-#            create_graph=True
-#        )[0]
-#    print(gradients)
-#    gradPenalty = ((gradients.norm(2,dim=1)**2 - 1)**2).mean()
-#    return gradPenalty
-
-
 class customLinearNetwork(nn.Module):
     # layersSize = list of sizes [insize,out1size,out2size,...,outsize]
     def __init__(self, layersNum, layersSize):
@@ -123,18 +110,3 @@ class customLinearNetwork(nn.Module):
         x = self.layers[-1](x)
         return F.softmax(x,dim=1)
         
-def softmaxForward(model, dataloader):
-    model.eval()
-    pred = []
-    with torch.no_grad():
-        for X,y in dataloader:
-            X = X.to(device)
-            pred.append(model.forward(X).cpu().numpy())
-    return np.vstack(pred)
-
-def deepEnsembleForward(models, dataloader):
-    predictions = []
-    for model in models:
-        predictions.append(softmaxForward(model,dataloader))
-    return np.mean(predictions,axis=0) # merging results
-
