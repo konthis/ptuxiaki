@@ -1,0 +1,10 @@
+*.xlsx
+*.pdf
+*.csv
+*.txt
+*.pyc
+*.docx
+blank.py
+models
+results
+__pycache__
