@@ -7,11 +7,25 @@ from tools import *
 from oodEvaluation import *
 from tqdm import tqdm
 from pathlib import Path
+import torch.nn.utils.prune as prune
+from prettytable import PrettyTable
 
 from matplotlib import pyplot as plt
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+def count_parameters(model):
+    table = PrettyTable(["Modules", "Parameters"])
+    total_params = 0
+    for name, parameter in model.named_parameters():
+        if not parameter.requires_grad:
+            continue
+        params = parameter.numel()
+        table.add_row([name, params])
+        total_params += params
+    print(table)
+    print(f"Total Trainable Params: {total_params}")
+    return total_params
 
 def KANTrainStep(trainloader,num_classes,model,optimizer, lossFunction, l):
     model.train()
@@ -75,7 +89,7 @@ def KANTrain(trainloader,testloader,falseloader,num_classes,model,optimizer, sch
 
 def KANcreateAndTrain(dataloaders,kanType,architecture,lossFunction, gridsize=8,lr=1e-3,lrDenom=1e-3,initDenominator=1.,
                       epochs=25,lamda=0,gamma=0.5,base_activ='silu',plot=False):
-    trainloader,testloader,falseloader,falseloader2,falseloader3 = dataloaders
+    trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4 = dataloaders
     model = None
     base_activation = ActivationFunctions(gamma).RBF_SiLU
     if base_activ.lower() == 'silu':
@@ -85,6 +99,7 @@ def KANcreateAndTrain(dataloaders,kanType,architecture,lossFunction, gridsize=8,
     elif kanType == 2:
         model = BSRBF_KAN(architecture,gridsize,base_activation=base_activation,denominator=initDenominator).to(device)
 
+    #count_parameters(model)
 
     denomParam = [p for name, p in model.named_parameters() if 'denominator' in name]
     othersParam = [p for name, p in model.named_parameters() if 'denominator' not in name]
@@ -97,9 +112,14 @@ def KANcreateAndTrain(dataloaders,kanType,architecture,lossFunction, gridsize=8,
 
     trainAccs, trainLosses, testAccs, testLosses,aurocProgress,lrProgress = KANTrain(trainloader,testloader,falseloader,architecture[-1],
     model,optimizer,scheduler,lossFunction,epochs,lamda)
+    auroc2 = auroc3 = '-'
     auroc1 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type='kan')
-    auroc2 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader2.dataset, model=model, device=device, model_type='kan')
-    auroc3 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader3.dataset, model=model, device=device, model_type='kan')
+    if falseloader2:
+        auroc2 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader2.dataset, model=model, device=device, model_type='kan')
+    if falseloader3:
+        auroc3 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader3.dataset, model=model, device=device, model_type='kan')
+    if falseloader4:
+        auroc4 = get_auroc_ood(true_dataset=testloader.dataset, ood_dataset=falseloader4.dataset, model=model, device=device, model_type='kan')
 
     #for name, param in model.named_parameters():
     #    if 'rbf.denominator' in name:
@@ -116,7 +136,7 @@ def KANcreateAndTrain(dataloaders,kanType,architecture,lossFunction, gridsize=8,
         plt.plot(aurocProgress,label='auroc2')
         plt.show()
     
-    return trainAccs[-1],trainLosses[-1],testAccs[-1],testLosses[-1],auroc1,auroc2,auroc3
+    return trainAccs[-1],trainLosses[-1],testAccs[-1],testLosses[-1],auroc1,auroc2,auroc3,auroc4
 
 
     ############
@@ -139,28 +159,34 @@ def testKAN():
     lossFunction = LogitNormLoss()
 
     # 1 fast kan, 2 brsbf
-    kanType = 2
+    kanType = 1
     lrs = [1e-1,1e-2,1e-3,1e-4]
     lrs = [1e-3]
     lrsDenom = [1e-1,1e-2,1e-3,1e-4,1e-5]
-    lrsDenom = [1e-4]
+    lrsDenom = [1e-1]
     lamdas = [0,0.0001,0.001,0.1]
     lamdas = ['-']
-    epochs = 65 
-    archs = [[3,16,8,3],[3,32,16,3],[3,64,32,3]]
-    archs = [[3,64,32,3]]
+    epochs = 100
+    #archs = [[3,64,32,3]]
+    archs = [[353,16,8,9],[353,16,16,9],[353,32,16,9],[353,64,32,9]]
+    archs = [[353,32,9]]
+    archs = [[3,16,3],[3,32,3],[3,64,3]]
+    archs = [[3,128,3]]
     gridsizes = [4,8,12,16]
-    gridsizes = [8]
-    gammas = [0.1,0.25,0.5,1,2,4]#for rbfs
-    gammas = [0.1]
-    gammas = ['-']
+    gridsizes = [4]
+    gammas = [0.001,0.1,0.25,0.5,1,2,4,8]#for rbfs
+    #gammas = [4,6,8,10]#for rbfs
+    gammas = [4]
+    #gammas = ['-']
     initDenoms = [0.1,0.25,0.5,1,1.5,2]
-    initDenoms = [1.3] ###### check initializer at implementation 
+    #initDenoms = [1.3] ###### check initializer at implementation 
     initDenoms = [1]
-    base_activation = 'silu'
-    modelsNum = 1
+    base_activation = 'rbf-silu'
+    modelsNum = 5
 
     dataloaders = loadAllDataloaders(binary=True if archs[0][-1]==2 else False)
+    #dataloaders = loadImageDataloaders()
+    #dataloaders = loadAllDataloaders(binary=False)
 
     totalResults = []
     (kanTypeName := 'FastKAN') if kanType == 1 else (kanTypeName := 'BSRBF')
@@ -189,22 +215,28 @@ def testKAN():
                                                  np.mean(testAccs),     np.std(testAccs),
                                                  np.mean(testLosses),   np.std(testLosses),
                                                  np.mean(aurocs1),      np.std(aurocs1),
-                                                 np.mean(aurocs2),      np.std(aurocs2),
-                                                 np.mean(aurocs3),      np.std(aurocs3)
-                                             ]# double list for save to excel implement
+                                                        ]# double list for save to excel implement
+                                if dataloaders[3]: finalResult.extend([np.mean(aurocs2),np.std(aurocs2)])
+                                if dataloaders[4]: finalResult.extend([np.mean(aurocs3),np.std(aurocs3)])
                                 totalResults.append(finalResult)
                                 print(f"Train Acc {100*finalResult[7]:>.1f}% std {100*finalResult[8]:>.1f}, AvgLoss {finalResult[9]:>.3f} std {finalResult[10]:>.3f}")
                                 print(f"Test  Acc {100*finalResult[11]:>.1f}% std {100*finalResult[12]:>.1f}, AvgLoss {finalResult[13]:>.3f} std {finalResult[14]:>.3f}")
-                                print(f"AUROC diab  {finalResult[15]:>.3f} std {finalResult[16]:>.3f}")
-                                print(f"AUROC iris  {finalResult[17]:>.3f} std {finalResult[18]:>.3f}")
-                                print(f"AUROC canc. {finalResult[19]:>.3f} std {finalResult[20]:>.3f}")
+                                print(f"AUROC 1 {finalResult[15]:>.3f} std {finalResult[16]:>.3f}")
+                                if dataloaders[3]:
+                                    print(f"AUROC 2  {finalResult[17]:>.3f} std {finalResult[18]:>.3f}")
+                                if dataloaders[4]:
+                                    print(f"AUROC 3 {finalResult[19]:>.3f} std {finalResult[20]:>.3f}")
 
 
     if save:
         colNames = ['arch','gridsize','lr','lr denom','initDenom','gamma','lambda',
                     'trainAccs','train acc std', 'trainLosses','train loss std',
                     'testAccs', 'test acc std','testLosses','test loss std',
-                    'auroc diab','auroc diab std','auroc iris','auroc iris std', 'auroc cancer','auroc cancer std']
+                    'auroc 1','auroc 1 std']
+        if dataloaders[3]:
+            colNames.extend(['auroc 2','auroc 2 std'])
+        if dataloaders[4]:
+            colNames.extend(['auroc 3','auroc 3 std'])
         Path(f"results/KAN/{kanTypeName}/{runName}").mkdir(parents=True, exist_ok=True)
         saveToEXCEL(totalResults,colNames,f"results/KAN/{kanTypeName}/{runName}/results")
 
@@ -212,6 +244,6 @@ def testKAN():
 if __name__ == "__main__":
     testKAN()
     
-    #topResultPerformersFromEXCEL('results/KAN/FastKAN/multirun_grid8/results',
-    #                             'results/KAN/FastKAN/multirun_grid8/highlamda_results',
-    #                             [(2,2)])
+    #topResultPerformersFromEXCEL('results/KAN/BSRBF/gammas_denoms_16_8/results',
+    #                             'results/KAN/BSRBF/gammas_denoms_16_8/best_results',
+    #                             [(11,0.5),(15,0.65),(17,0.65),(19,.65)])

@@ -13,6 +13,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def chooseModelTrain():
     save = str(input("Save?(y/n):"))
+    imgTrain = str(input("Image train?(PCA)(y/n):"))
     print("1. Train DUQ")
     print("2. Train MLP")
     print("3. Train n-ensemble")
@@ -43,30 +44,44 @@ def chooseModelTrain():
         #std         = 1e-3
         #modelsNum   = 5
 
-        trainloader,testloader,falseloader,falseloader2,falseloader3 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+        if imgTrain.lower() == 'y':
+            trainloader,testloader,falseloader,falseloader2,falseloader3 = loadImageDataloaders()
+        else:
+            trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
 
-        results = [DUQcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3,
+        results = [DUQcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3, falseloader4,
                                     architecture,std,sigma,lr,lrSigma,lamda,epochs) for _ in range(modelsNum)]
-        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3 = zip(*results) # creates lists for each return variable
+        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3,aurocs4 = zip(*results) # creates lists for each return variable
         finalResult = [architecture,lr,lamda, std,
                           np.mean(trainAccs),    np.std(trainAccs),
                           np.mean(trainLosses),  np.std(trainLosses),
                           np.mean(testAccs),     np.std(testAccs),
                           np.mean(testLosses),   np.std(testLosses),
                           np.mean(aurocs1),      np.std(aurocs1),
-                          np.mean(aurocs2),      np.std(aurocs2),
-                          np.mean(aurocs3),      np.std(aurocs3)
-                      ]# double list for save to excel implement
-        print(f"Train Acc {100*finalResult[4]:>.1f}% std {100*finalResult[5]:>.1f}, AvgLoss {finalResult[6]:>.3f} std {finalResult[7]:>.3f}")
-        print(f"Test  Acc {100*finalResult[8]:>.1f}% std {100*finalResult[9]:>.1f}, AvgLoss {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
-        print(f"AUROC wine  {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
-        print(f"AUROC iris  {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
-        print(f"AUROC canc. {finalResult[16]:>.3f} std {finalResult[17]:>.3f}")
+                        ]# double list for save to excel implement
+        if falseloader2: finalResult.extend([np.mean(aurocs2),np.std(aurocs2)])
+        if falseloader3: finalResult.extend([np.mean(aurocs3),np.std(aurocs3)])
+        if falseloader4: finalResult.extend([np.mean(aurocs4),np.std(aurocs4)])
+        print(f"Train Acc {100*finalResult[4]:>.2f}% std {100*finalResult[5]:>.2f}, AvgLoss {finalResult[6]:>.3f} std {finalResult[7]:>.3f}")
+        print(f"Test  Acc {100*finalResult[8]:>.2f}% std {100*finalResult[9]:>.2f}, AvgLoss {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
+        print(f"AUROC 1 {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
+        if falseloader2:
+            print(f"AUROC 2 {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
+        if falseloader3:
+            print(f"AUROC 3 {finalResult[16]:>.3f} std {finalResult[17]:>.3f}")
+        if falseloader4:
+            print(f"AUROC 4 {finalResult[18]:>.3f} std {finalResult[19]:>.3f}")
         if save:
             colNames = ['arch','lr','lamda','std',
                         'trainAccs','train acc std', 'trainLosses','train loss std',
                         'testAccs', 'test acc std','testLosses','test loss std',
-                        'auroc wine','auroc wine std','auroc iris','auroc iris std', 'auroc cancer','auroc cancer std']
+                        'auroc 1','auroc 1 std']
+            if falseloader2:
+                colNames.extend(['auroc 2','auroc 2 std'])
+            if falseloader3:
+                colNames.extend(['auroc 3','auroc 3 std'])
+            if falseloader4:
+                colNames.extend(['auroc 4','auroc 4 std'])
             Path(f"results/DUQ/{runName}").mkdir(parents=True, exist_ok=True)
             saveToEXCEL([finalResult],colNames,f"results/DUQ/{runName}/results")
 
@@ -83,11 +98,16 @@ def chooseModelTrain():
         #epochs      = 120
         #lr          = 1e-1
         #modelsNum   = 5
-        trainloader,testloader,falseloader,falseloader2,falseloader3 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
 
-        results = [MLPcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3,
+        if imgTrain.lower() == 'y':
+            trainloader,testloader,falseloader,falseloader2,falseloader3 = loadImageDataloaders()
+        else:
+            #trainloader,testloader,falseloader,falseloader2,falseloader3 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+            trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+
+        results = [MLPcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4,
                                     architecture,lr,epochs) for _ in range(modelsNum)]
-        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3 = zip(*results) # creates lists for each return variable
+        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3,aurocs4 = zip(*results) # creates lists for each return variable
         finalResult = [architecture,lr,
                           np.mean(trainAccs),    np.std(trainAccs),
                           np.mean(trainLosses),  np.std(trainLosses),
@@ -95,19 +115,21 @@ def chooseModelTrain():
                           np.mean(testLosses),   np.std(testLosses),
                           np.mean(aurocs1),      np.std(aurocs1),
                           np.mean(aurocs2),      np.std(aurocs2),
-                          np.mean(aurocs3),      np.std(aurocs3)
+                          np.mean(aurocs3),      np.std(aurocs3),
+                          np.mean(aurocs4),      np.std(aurocs4)
                       ]# double list for save to excel implement
-        print(f"Train Acc {100*finalResult[2]:>.1f}% std {100*finalResult[3]:>.1f}, AvgLoss {finalResult[4]:>.3f} std {finalResult[5]:>.3f}")
-        print(f"Test  Acc {100*finalResult[6]:>.1f}% std {100*finalResult[7]:>.1f}, AvgLoss {finalResult[8]:>.3f} std {finalResult[9]:>.3f}")
-        print(f"AUROC wine  {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
-        print(f"AUROC iris  {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
-        print(f"AUROC canc. {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
+        print(f"Train Acc {100*finalResult[2]:>.2f}% std {100*finalResult[3]:>.2f}, AvgLoss {finalResult[4]:>.3f} std {finalResult[5]:>.3f}")
+        print(f"Test  Acc {100*finalResult[6]:>.2f}% std {100*finalResult[7]:>.2f}, AvgLoss {finalResult[8]:>.3f} std {finalResult[9]:>.3f}")
+        print(f"AUROC 1 {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
+        print(f"AUROC 2 {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
+        print(f"AUROC 3 {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
+        print(f"AUROC 4 {finalResult[16]:>.3f} std {finalResult[17]:>.3f}")
 
         if save:
             colNames = ['arch','lr',
                         'trainAccs','train acc std', 'trainLosses','train loss std',
                         'testAccs', 'test acc std','testLosses','test loss std',
-                        'auroc wine','auroc wine std','auroc iris','auroc iris std', 'auroc cancer','auroc cancer std']
+                        'auroc 1','auroc 1 std','auroc 2','auroc 2 std', 'auroc 3','auroc 3 std','auroc 4','auroc 4 std']
             Path(f"results/MLP/{runName}").mkdir(parents=True, exist_ok=True)
             saveToEXCEL([finalResult],colNames,f"results/MLP/{runName}/results")
 
@@ -127,11 +149,14 @@ def chooseModelTrain():
         #modelsNumEnsemble = 5
         #modelsNum   = 5
 
-        trainloader,testloader,falseloader,falseloader2,falseloader3 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+        if imgTrain.lower() == 'y':
+            trainloader,testloader,falseloader,falseloader2,falseloader3 = loadImageDataloaders()
+        else:
+            trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4 = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
 
-        results = [DEcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3,
+        results = [DEcreateAndTrain(trainloader,testloader,falseloader,falseloader2,falseloader3,falseloader4,
                                     modelsNumEnsemble,architecture,lr,epochs) for _ in range(modelsNum)]
-        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3 = zip(*results) # creates lists for each return variable
+        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3,aurocs4 = zip(*results) # creates lists for each return variable
         finalResult = [architecture,lr,
                           np.mean(trainAccs),    np.std(trainAccs),
                           np.mean(trainLosses),  np.std(trainLosses),
@@ -139,19 +164,21 @@ def chooseModelTrain():
                           np.mean(testLosses),   np.std(testLosses),
                           np.mean(aurocs1),      np.std(aurocs1),
                           np.mean(aurocs2),      np.std(aurocs2),
-                          np.mean(aurocs3),      np.std(aurocs3)
+                          np.mean(aurocs3),      np.std(aurocs3),
+                          np.mean(aurocs4),      np.std(aurocs4),
                       ]# double list for save to excel implement
-        print(f"Train Acc {100*finalResult[2]:>.1f}% std {100*finalResult[3]:>.1f}, AvgLoss {finalResult[4]:>.3f} std {finalResult[5]:>.3f}")
-        print(f"Test  Acc {100*finalResult[6]:>.1f}% std {100*finalResult[7]:>.1f}, AvgLoss {finalResult[8]:>.3f} std {finalResult[9]:>.3f}")
-        print(f"AUROC wine {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
-        print(f"AUROC iris  {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
-        print(f"AUROC canc. {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
+        print(f"Train Acc {100*finalResult[2]:>.2f}% std {100*finalResult[3]:>.2f}, AvgLoss {finalResult[4]:>.3f} std {finalResult[5]:>.3f}")
+        print(f"Test  Acc {100*finalResult[6]:>.2f}% std {100*finalResult[7]:>.2f}, AvgLoss {finalResult[8]:>.3f} std {finalResult[9]:>.3f}")
+        print(f"AUROC 1 {finalResult[10]:>.3f} std {finalResult[11]:>.3f}")
+        print(f"AUROC 2 {finalResult[12]:>.3f} std {finalResult[13]:>.3f}")
+        print(f"AUROC 3 {finalResult[14]:>.3f} std {finalResult[15]:>.3f}")
+        print(f"AUROC 4 {finalResult[16]:>.3f} std {finalResult[17]:>.3f}")
 
         if save:
             colNames = ['arch','lr',
                         'trainAccs','train acc std', 'trainLosses','train loss std',
                         'testAccs', 'test acc std','testLosses','test loss std',
-                        'auroc wine','auroc wine std','auroc iris','auroc iris std', 'auroc cancer','auroc cancer std']
+                        'auroc 1','auroc 1 std','auroc 2','auroc 2 std', 'auroc 3','auroc 3 std', 'auroc 4','auroc 4 std']
             Path(f"results/DE/{runName}").mkdir(parents=True, exist_ok=True)
             saveToEXCEL([finalResult],colNames,f"results/DE/{runName}/results")
 
@@ -191,11 +218,15 @@ def chooseModelTrain():
         lamda       = '-'
         modelsNum   = int(input("Number of trained models: "))
 
-        dataloaders = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+        if imgTrain.lower() == 'y':
+            dataloaders = loadImageDataloaders()
+        else:
+            dataloaders = loadAllDataloaders(binary=True if architecture[-1]==2 else False)
+
         results = [KANcreateAndTrain(dataloaders,kanTypeI, architecture,lossFunction, gridsize=gridsize, lr=lr,
                     lrDenom=lrDenom, initDenominator=initDenom, epochs=epochs, lamda=lamda,
                     gamma=gamma,base_activ=actF, plot=False) for _ in range(modelsNum)]
-        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3 = zip(*results) # creates lists for each return variable
+        trainAccs, trainLosses, testAccs, testLosses, aurocs1, aurocs2,aurocs3,aurocs4 = zip(*results) # creates lists for each return variable
         finalResult = [architecture,gridsize,lr,lrDenom,initDenom,gamma, lamda,
                          np.mean(trainAccs),    np.std(trainAccs),
                          np.mean(trainLosses),  np.std(trainLosses),
@@ -203,19 +234,21 @@ def chooseModelTrain():
                          np.mean(testLosses),   np.std(testLosses),
                          np.mean(aurocs1),      np.std(aurocs1),
                          np.mean(aurocs2),      np.std(aurocs2),
-                         np.mean(aurocs3),      np.std(aurocs3)
+                         np.mean(aurocs3),      np.std(aurocs3),
+                         np.mean(aurocs4),      np.std(aurocs4)
                      ]# double list for save to excel implement
-        print(f"Train Acc {100*finalResult[7]:>.1f}% std {100*finalResult[8]:>.1f}, AvgLoss {finalResult[9]:>.3f} std {finalResult[10]:>.3f}")
-        print(f"Test  Acc {100*finalResult[11]:>.1f}% std {100*finalResult[12]:>.1f}, AvgLoss {finalResult[13]:>.3f} std {finalResult[14]:>.3f}")
-        print(f"AUROC wine  {finalResult[15]:>.3f} std {finalResult[16]:>.3f}")
-        print(f"AUROC iris  {finalResult[17]:>.3f} std {finalResult[18]:>.3f}")
-        print(f"AUROC canc. {finalResult[19]:>.3f} std {finalResult[20]:>.3f}")
+        print(f"Train Acc {100*finalResult[7]:>.2f}% std {100*finalResult[8]:>.2f}, AvgLoss {finalResult[9]:>.3f} std {finalResult[10]:>.3f}")
+        print(f"Test  Acc {100*finalResult[11]:>.2f}% std {100*finalResult[12]:>.2f}, AvgLoss {finalResult[13]:>.3f} std {finalResult[14]:>.3f}")
+        print(f"AUROC 1  {finalResult[15]:>.3f} std {finalResult[16]:>.3f}")
+        print(f"AUROC 2  {finalResult[17]:>.3f} std {finalResult[18]:>.3f}")
+        print(f"AUROC 3 {finalResult[19]:>.3f} std {finalResult[20]:>.3f}")
+        print(f"AUROC 4 {finalResult[21]:>.3f} std {finalResult[22]:>.3f}")
 
         if save:
             colNames = ['arch','gridsize','lr','lr denom','initDenom','gamma','lambda',
                         'trainAccs','train acc std', 'trainLosses','train loss std',
                         'testAccs', 'test acc std','testLosses','test loss std',
-                        'auroc wine','auroc wine std','auroc iris','auroc iris std', 'auroc cancer','auroc cancer std']
+                        'auroc 1','auroc 1 std','auroc 2','auroc 2 std', 'auroc 3','auroc 3 std','auroc 4','auroc 4 std']
             Path(f"results/KAN/{kanType}/{runName}").mkdir(parents=True, exist_ok=True)
             saveToEXCEL([finalResult],colNames,f"results/KAN/{kanType}/{runName}/results")
 

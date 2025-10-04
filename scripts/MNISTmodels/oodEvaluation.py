@@ -39,8 +39,8 @@ def loop_over_dataloader(model, dataloader, model_type):
             data = data.to(train_device)
             target = target.to(train_device)
 
-            if model_type.lower() == 'duq' or model_type == 'kanduq':
-                output = model(data)
+            if model_type.lower() == 'duq':
+                output,_ = model(data)
                 kernel_distance, pred = output.max(1)
                 uncertainty = - kernel_distance 
             
@@ -50,8 +50,9 @@ def loop_over_dataloader(model, dataloader, model_type):
                 uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
 
             elif model_type.lower() == 'kan':
+                data= data.view(-1, 28*28).to(train_device)
                 output = model.forwardSoftmax(data) 
-                _, pred = output.max(1)
+                #_, pred = output.max(1)
                 uncertainty = torch.sum(output * torch.log(output+ 1e-10), dim=1)
             
             else: ## embedings

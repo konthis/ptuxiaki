@@ -3,8 +3,11 @@
 *.csv
 *.txt
 *.pyc
+*.pth
 *.docx
 blank.py
 models
 results
+data
 __pycache__/
+ptuxiaki_venv
