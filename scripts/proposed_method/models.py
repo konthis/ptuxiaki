@@ -35,7 +35,7 @@ class SoftmaxNet(nn.Module):
             layers.append(activationFunction)
             inputSize = l
         
-        layers.append(nn.Softmax(dim=1))
+        #layers.append(nn.Softmax(dim=1))
 
         self.model = nn.Sequential(*layers)
 
@@ -55,7 +55,7 @@ class DUQ(nn.Module):
         ## DUQ weight vector, Parameter so the optimizer and backprop get it into consideration
         ## size = centroidDim x noClasses x featureDim(prev output)
         self.W = nn.Parameter(
-            torch.normal(torch.zeros(centroidDim, outputDim, outFeatureDim),std=1)
+            torch.normal(torch.zeros(centroidDim, outputDim, outFeatureDim),std=std)
         )
 
         # length scale
@@ -139,10 +139,10 @@ class SplineLinear(nn.Linear):
 class RadialBasisFunction(nn.Module):
     def __init__(
         self,
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8,
-        denominator: float = None,  # larger denominators lead to smoother basis
+        denominator: float = 1.,  # larger denominators lead to smoother basis
     ):
         super().__init__()
         self.grid_min = grid_min
@@ -150,7 +150,9 @@ class RadialBasisFunction(nn.Module):
         self.num_grids = num_grids
         grid = torch.linspace(grid_min, grid_max, num_grids)
         self.grid = torch.nn.Parameter(grid, requires_grad=False)
-        self.denominator = denominator or (grid_max - grid_min) / (num_grids - 1)
+        #self.denominator = denominator or (grid_max - grid_min) / (num_grids - 1)
+        self.denominator = nn.Parameter(torch.ones_like(torch.zeros(1))*denominator) ##### change
+        
 
     def forward(self, x):
         return torch.exp(-((x[..., None] - self.grid) / self.denominator) ** 2)
@@ -160,8 +162,8 @@ class FastKANLayer(nn.Module):
         self,
         input_dim: int,
         output_dim: int,
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8,
         use_base_update: bool = True,
         use_layernorm: bool = True,
@@ -227,8 +229,8 @@ class FastKAN(nn.Module):
     def __init__(
         self,
         layers_hidden: List[int],
-        grid_min: float = -2.,
-        grid_max: float = 2.,
+        grid_min: float = -6.,
+        grid_max: float = 6.,
         num_grids: int = 8,
         use_base_update: bool = True,
         base_activation = F.silu,
@@ -541,77 +543,56 @@ class EfficientKAN(nn.Module):
         )
 
 class KANDUQ(nn.Module):
-    def __init__(self, architecture,std,initSigma):
+    def __init__(
+        self,
+        feature_extractor,
+        num_classes,
+        centroid_size,
+        model_output_size,
+        length_scale,
+        gamma,
+    ):
         super().__init__()
-        self.outFeatureDim = architecture[-3] ##################### TEST
-        self.centroidDim   = architecture[-2]
-        self.outputDim     = architecture[-1]
 
-        self.kanmodel = FastKAN(architecture[:-2],num_grids=8)
+        self.gamma = gamma
 
-        #self.kanmodel = FastKANLayer(architecture[0],self.outFeatureDim)
-        self.centroidLayer = FastKANLayer(self.outFeatureDim, self.centroidDim * self.outputDim,
-                                          num_grids=8)
+        self.W = nn.Parameter(
+            torch.zeros(centroid_size, num_classes, model_output_size)
+        )
+        nn.init.kaiming_normal_(self.W, nonlinearity="relu")
 
-        #self.W = nn.Parameter(
-        #    torch.normal(torch.zeros(self.centroidDim, self.outputDim, self.outFeatureDim),std=1)
-        #)
+        self.feature_extractor = feature_extractor
 
-        # maybe lower lr ###############################
-        self.sigma = nn.Parameter(torch.ones_like(torch.zeros(self.outputDim))*initSigma) ##### change
-        # momentum
-        self.gamma = 0.999
+        self.register_buffer("N", torch.zeros(num_classes) + 1)
+        self.register_buffer(
+            "m", torch.normal(torch.zeros(centroid_size, num_classes), 1)
+        )
+        self.m = self.m * self.N
 
+        self.sigma = length_scale
 
-        self.std = std #  standard div of m
-        #centroids are calculated as e_ct = m_ct/n_ct, c=class t = minibatch
-        # register buffers = parameters that dont return with parameters() call, so it wont calc the derivs for backprop
-        self.register_buffer("n",torch.ones(self.outputDim))
-        self.register_buffer('m', torch.normal(torch.zeros(self.centroidDim, self.outputDim), std = std))
+    def rbf(self, z):
+        z = torch.einsum("ij,mnj->imn", z, self.W)
 
-    #def embeddingLayer(self, x):
-    #    #  last weight layer, on DUQ part
-    #    # simple matrix mul
-    #    # x size = batchSize x outFeatureDim
-    #    # z size = batchSize x centroidDim x noclasses
-    #    z = torch.einsum("ij,mnj->imn", x, self.W)
-    #    return z
-    def embeddingLayer(self, x):
-        z = self.centroidLayer(x)
-        z = z.view(x.size(0),self.centroidDim,self.outputDim)
-        return z
-        
-    def forwardFeatures(self,x):
-        x = self.kanmodel(x)
-        return x
+        embeddings = self.m / self.N.unsqueeze(0)
 
-    def updateCentroids(self,x,y):
-        z = self.kanmodel(x)
-        z = self.embeddingLayer(z)
-        # y =  one hot encoded
-        ################# MAYBE CHANGE
-        #self.n = self.gamma * self.n + (1 - self.gamma) * y.sum(0) # y onehot, sum 0  is total of class i
-        self.n = torch.max(self.gamma * self.n + (1 - self.gamma) * y.sum(0), torch.ones_like(self.n)) # IF 0 SAMPLES OF A CLASS FOUND, SET IT TO 1
-        self.m = self.gamma * self.m + (1 - self.gamma) * torch.einsum("ijk,ik->jk",z,y) # einsum with onehot enc y, to activate on correct class
+        diff = z - embeddings.unsqueeze(0)
+        diff = (diff ** 2).mean(1).div(2 * self.sigma ** 2).mul(-1).exp()
 
-    def calcDistanceLayer(self, z):
-        # centroids
-        e = self.m / self.n
-        diff = z - e # no abs as it is squared 
-        distances = (-(diff**2)).mean(1).div(2 * self.sigma**2).exp()
-        return distances
+        return diff
 
-    def forwardWithEmbeddings(self,x):
-        # features
-        z = self.kanmodel(x)
-        z = self.embeddingLayer(z)
-        # embed
-        #z = self.embeddingLayer(x)
-        # distances/certainty
-        ypred = self.calcDistanceLayer(z)
-        return ypred,z
+    def updateCentroids(self, x, y):
+        self.N = self.gamma * self.N + (1 - self.gamma) * y.sum(0)
 
-    def forward(self,x):
-        return self.forwardWithEmbeddings(x)[0]
+        z = self.feature_extractor(x)
 
-    def getKANmodel(self): return self.kanmodel
+        z = torch.einsum("ij,mnj->imn", z, self.W)
+        embedding_sum = torch.einsum("ijk,ik->jk", z, y)
+
+        self.m = self.gamma * self.m + (1 - self.gamma) * embedding_sum
+
+    def forward(self, x):
+        z = self.feature_extractor(x)
+        y_pred = self.rbf(z)
+
+        return y_pred

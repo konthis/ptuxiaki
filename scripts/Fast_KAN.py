@@ -18,7 +18,7 @@ import torch.nn.functional as F
 
 import math
 from typing import *
-from functions import *
+from scripts.functions import *
 
 class SplineLinear(nn.Linear):
     def __init__(self, in_features: int, out_features: int, init_scale: float = 0.1, **kw) -> None:

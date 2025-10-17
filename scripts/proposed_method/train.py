@@ -32,8 +32,8 @@ def KANDUQtrainStep(model,optimizer,lossFunction,trainLoader,numClasses,gradPena
         totalLoss += loss.item()
         optimizer.step()
 
-        with torch.no_grad():
-            model.updateCentroids(output,y)
+        #with torch.no_grad():
+        #    model.updateCentroids(output,y)
             #model.updateCentroids(kanoutput,y)
     totalLoss /= len(trainLoader)
     accuracy = correct / len(trainLoader.dataset)
@@ -60,7 +60,7 @@ def networkTrainStep(netType, model,optimizer,lossFunction,trainLoader,numClasse
         totalLoss += loss.item()
         optimizer.step()
 
-        if netType.lower()=='duq':
+        if 'duq' in netType.lower():
             with torch.no_grad():
                 model.updateCentroids(x,y)
     totalLoss /= len(trainLoader)
@@ -82,7 +82,7 @@ def networkTest(model,lossFunction,testLoader):
     valAccuracy /= len(testLoader)
     return valAccuracy, valLoss
 
-def networkTrain(netType,model,optimizer,scheduler,lossFunction,trainLoader,testLoader,falseLoader,numClasses,gradPenaltyL,epochs):
+def networkTrain(netType,model,optimizer,scheduler,lossFunction,trainLoader,testLoader,falseLoaders,numClasses,gradPenaltyL,epochs):
     trainAccs   = []
     testAccs    = []
     trainLosses = []
@@ -90,24 +90,30 @@ def networkTrain(netType,model,optimizer,scheduler,lossFunction,trainLoader,test
     aurocs      = []
 
     for _ in tqdm(range(epochs),desc="Epochs"):
-        if netType.lower() == 'kanduq':
-            trainAcc,trainLoss = KANDUQtrainStep(model,optimizer,lossFunction,trainLoader,numClasses,gradPenaltyL)
-        else:
-            trainAcc,trainLoss = networkTrainStep(netType,model,optimizer,lossFunction,trainLoader,numClasses,gradPenaltyL)
+        #if netType.lower() == 'kanduq':
+        #    trainAcc,trainLoss = KANDUQtrainStep(model,optimizer,lossFunction,trainLoader,numClasses,gradPenaltyL)
+        #else:
+        #    trainAcc,trainLoss = networkTrainStep(netType,model,optimizer,lossFunction,trainLoader,numClasses,gradPenaltyL)
+        trainAcc,trainLoss = networkTrainStep(netType,model,optimizer,lossFunction,trainLoader,numClasses,gradPenaltyL)
         testAcc,testLoss = networkTest(model,lossFunction,testLoader)
-        aurocs.append(get_auroc_ood(true_dataset=testLoader.dataset, ood_dataset=falseLoader.dataset, model=model, device=device, model_type=netType))
+        currentAurocs = [] 
+        for falseloader in falseLoaders:
+            currentAurocs.append(get_auroc_ood(true_dataset=testLoader.dataset, ood_dataset=falseloader.dataset, model=model, device=device, model_type=netType))
+        aurocs.append(currentAurocs)
+
 
         scheduler.step(testLoss)
         trainAccs.append(trainAcc)
-        trainLosses.append(trainLosses)
+        trainLosses.append(trainLoss)
         testAccs.append(testAcc)
-        testLosses.append(testLosses)
+        testLosses.append(testLoss)
     
-    print(f"TrainAcc:{trainAcc:>.4f}, TrainLoss:{trainLoss:>.3f}")
-    print(f"TestAcc: {testAcc:>.4f}, TestLoss: {testLoss:>.3f}")
-    print(f"AUROC: {aurocs[-1]:>.3f}")
+    #print(f"TrainAcc:{trainAcc:>.4f}, TrainLoss:{trainLoss:>.3f}")
+    #print(f"TestAcc: {testAcc:>.4f}, TestLoss: {testLoss:>.3f}")
+    #for i,auroc in enumerate(aurocs[-1]):
+    #    print(f"AUROC {i+1}: {auroc:>.3f}")
 
-    plot([i for i in range(epochs)],'epochs',testAccs,'Test acc','b','-')
-    plot([i for i in range(epochs)],'epochs',aurocs,'auroc','b','-')
+    #plot([i for i in range(epochs)],'epochs',testAccs,'Test acc','b','-')
+    #plot([i for i in range(epochs)],'epochs',aurocs,'auroc','b','-')
 
-    return trainAccs,trainLosses,testAccs,testLosses,aurocs[-1]
+    return trainAccs[-1],trainLosses[-1],testAccs[-1],testLosses[-1],aurocs[-1]
